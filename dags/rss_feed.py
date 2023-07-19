@@ -2,12 +2,13 @@ from datetime import datetime,timedelta
 import requests
 import xml.etree.ElementTree as ET
 import csv
-
+import pandas as pd
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
 from airflow.operators.bash_operator import BashOperator
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.models import XCom
+from airflow.models import Variable 
 
 default_args = {
     'owner': 'airflow',
@@ -53,7 +54,19 @@ def load_to_database(**context):
     ti = context['task_instance']
     curated_filename = ti.xcom_pull(key='curated_filename')
 
-    # Implement the logic to load the CSV file into a database of your choice
+    # Retrieve PostgreSQL credentials using Airflow's Variable
+    postgres_user = Variable.get("POSTGRES_USER")
+    postgres_password = Variable.get("POSTGRES_PASSWORD")
+    postgres_db = Variable.get("POSTGRES_DB")
+    postgres_host = "postgres"  # Use the container service name as the host
+
+    # Connection string for PostgreSQL
+    conn_str = f"postgresql+psycopg2://{postgres_user}:{postgres_password}@{postgres_host}/{postgres_db}"
+
+
+    
+    df = pd.read_csv(curated_filename)
+    df.to_sql('NEWS_feED', conn_str, if_exists='append', index=False)
 
 dag = DAG('rss_etl_dag', default_args=default_args, schedule_interval='0 23 * * *')
 
@@ -68,7 +81,7 @@ download_task = PythonOperator(
 
 parse_task = PythonOperator(
     task_id='parse_rss_feed',
-    python_callable=parse_rss_feed,
+    python_callable=parse_rss_feed, 
     provide_context=True,
     dag=dag
 )
